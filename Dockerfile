@@ -4,7 +4,7 @@ LABEL net.particular.servicecontrol.version="3.2.3"
 
 ENV sc_version="3.2.3"
 
-ARG transport_type="MSMQ" \
+ENV transport_type="MSMQ" \
     connection_string="" \
     port="33333" \
     management_port="33334" \
@@ -29,20 +29,22 @@ WORKDIR /
 
 # Download SC installer and run it
 RUN [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
-        Invoke-WebRequest -Uri 'https://github.com/Particular/ServiceControl/releases/download/3.2.3/Particular.ServiceControl-3.2.3.exe' -OutFile installer.exe ; \
+        Invoke-WebRequest -Uri "https://github.com/Particular/ServiceControl/releases/download/$env:sc_version/Particular.ServiceControl-$env:sc_version.exe" -OutFile installer.exe ; \
         Start-Process -Wait -FilePath .\installer.exe -ArgumentList /qn ; \
         Remove-Item -Recurse -Force installer.exe
 
 # Install SC instance using MSMQ
 RUN Import-Module C:\Program` Files` `(x86`)\Particular` Software\ServiceControl` Management\ServiceControlMgmt.psd1 ;\
-        New-ServiceControlInstance -Name Particular.ServiceControl -InstallPath C:\ServiceControl\Bin -DBPath C:\ServiceControl\DB -LogPath C:\ServiceControl\Logs -Port $env:port -DatabaseMaintenancePort $env:management_port -Transport MSMQ -ErrorQueue $env:error_queue  -AuditQueue $env:audit_queue -ForwardAuditMessages:$false -AuditRetentionPeriod $env:audit_retention -ErrorRetentionPeriod $env:error_retention;
-
-# Stop the SC instance
-RUN Stop-Service -Name 'Particular.ServiceControl';
+        New-ServiceControlInstance -Name Particular.ServiceControl -InstallPath C:\ServiceControl\Bin -DBPath C:\ServiceControl\DB -LogPath C:\ServiceControl\Logs -Port $env:port -DatabaseMaintenancePort $env:management_port -Transport MSMQ -ErrorQueue $env:error_queue  -AuditQueue $env:audit_queue -ForwardAuditMessages:$false -AuditRetentionPeriod $env:audit_retention -ErrorRetentionPeriod $env:error_retention; \
+        (Get-Service -Name 'Particular.ServiceControl').WaitForStatus('Running'); \
+        Stop-Service -Name 'Particular.ServiceControl'; \
+        (Get-Service -Name 'Particular.ServiceControl').WaitForStatus('Stopped'); \
+        Set-Service -Name 'Particular.ServiceControl' -StartupType Manual;
 
 # Remove the generated DB and Logs directories
-RUN Remove-Item -path C:\ServiceControl\DB -recurse; \
-	Remove-Item -path C:\ServiceControl\Logs -recurse;
+RUN Remove-Item -path C:\ServiceControl\DB -force -recurse -ErrorAction Ignore; \
+        Move-Item C:\ServiceControl\DB C:\ServiceControl\DB2; \
+	Remove-Item -path C:\ServiceControl\Logs -force -recurse;
 
 # Update ServiceControl.exe.config with correct transport type and, if not MSMQ, connectionstring. This is messed up, no capability to use the passed in transport, so we have to create our own switching logic to translate the transport_type (simple name) to ServiceControl/TransportType (TransportCustomization assemblyqualified name) if we don't write more code
 RUN .\configsc --SettingKey 'ServiceControl/TransportType' --SettingValue 'ServiceControl.Transports.ASB.ASBForwardingTopologyTransportCustomization, ServiceControl.Transports.ASB' --Runtime $false; \

@@ -1,6 +1,6 @@
 param (
-	[Parameter(Mandatory=$true)][string][$SettingKey],
-	[Parameter(Mandatory=$true)][string][$SettingValue],
+	[Parameter(Mandatory=$true)][string]$SettingKey,
+	[Parameter(Mandatory=$true)][string]$SettingValue,
 	[switch]$RunTime = $true
 )
 
